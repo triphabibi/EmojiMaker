@@ -25,5 +25,9 @@
 	<string>Emoji Maker needs access to save your created emojis to your photo library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Emoji Maker needs access to your photo library to import images for emoji creation.</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
 </dict>
 </plist>

@@ -26,6 +26,6 @@ targets:
       - Resources
     settings:
       INFOPLIST_FILE: Info.plist
-      PRODUCT_BUNDLE_IDENTIFIER: com.example.emojimaker
+      PRODUCT_BUNDLE_IDENTIFIER: com.triphabibi.emojimaker
       CODE_SIGN_STYLE: Automatic
-      DEVELOPMENT_TEAM: ABCDEFG123
+      DEVELOPMENT_TEAM: QAT93YWVSF
