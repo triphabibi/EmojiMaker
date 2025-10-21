@@ -1,0 +1,45 @@
+name: iOS CI - Build and TestFlight
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-and-upload:
+    runs-on: macos-latest
+    env:
+      MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      TEAM_ID: ${{ secrets.TEAM_ID }}
+      APP_IDENTIFIER: ${{ secrets.APP_IDENTIFIER }}
+      APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+
+      - name: Install Homebrew dependencies
+        run: |
+          brew update
+          brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Install gems
+        run: bundle install --path vendor/bundle
+
+      - name: Build and Upload to TestFlight
+        run: bundle exec fastlane beta

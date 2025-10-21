@@ -1,0 +1,31 @@
+name: EmojiMaker
+options:
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: 5.9
+
+schemes:
+  EmojiMaker:
+    build:
+      targets:
+        EmojiMaker: all
+
+targets:
+  EmojiMaker:
+    type: application
+    platform: iOS
+    sources:
+      - App
+      - Managers
+      - Models
+      - ViewControllers
+      - Views
+      - Resources
+    settings:
+      INFOPLIST_FILE: Info.plist
+      PRODUCT_BUNDLE_IDENTIFIER: com.example.emojimaker
+      CODE_SIGN_STYLE: Automatic
+      DEVELOPMENT_TEAM: ABCDEFG123
