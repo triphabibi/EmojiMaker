@@ -17,7 +17,8 @@ platform :ios do
       type: "appstore",
       readonly: true,
       git_url: ENV['MATCH_GIT_URL'],
-      username: ENV['APPLE_ID']
+      username: ENV['APPLE_ID'],
+      git_private_key: ENV['MATCH_GIT_PRIVATE_KEY']
     )
 
     build_app(
