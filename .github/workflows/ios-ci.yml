@@ -120,18 +120,35 @@ jobs:
         run: |
           readonly_flag="${MATCH_READONLY:-true}"
           echo "Match readonly: ${readonly_flag}"
+
+          # Decide auth mode: prefer SSH if a private key is provided
+          auth_mode="auto"
+          if [[ -n "${MATCH_GIT_PRIVATE_KEY}" || -n "${MATCH_GIT_PRIVATE_KEY_B64}" ]]; then
+            auth_mode="ssh"
+          elif [[ -n "${MATCH_GIT_TOKEN}" ]]; then
+            auth_mode="https"
+          else
+            auth_mode="none"
+          fi
+          echo "Preflight auth mode: ${auth_mode}"
+
           effective_url="${MATCH_GIT_URL}"
-          if [[ -n "${MATCH_GIT_TOKEN}" && "${effective_url}" =~ ^git@github.com: ]]; then
-            # Rewrite SSH to HTTPS for token usage
+          if [[ "${auth_mode}" == "https" && "${effective_url}" =~ ^git@github.com: ]]; then
+            # Rewrite SSH URL to HTTPS for token usage only if SSH not configured
             effective_url="https://github.com/${effective_url#git@github.com:}"
           fi
 
           echo "Checking access to certs repo: ${effective_url}"
-          # Rely on previous global git config rewrite (or ssh-agent) for authentication
+          # Rely on previous global git config rewrite (for HTTPS) or ssh-agent (for SSH) for authentication
           if ! git ls-remote "${effective_url}" &>/dev/null; then
             echo "Error: Cannot access certificates repo via ${effective_url}."
-            echo "If using HTTPS, ensure MATCH_GIT_TOKEN has 'Contents: Read' on the repo."
-            echo "If using SSH, ensure MATCH_GIT_PRIVATE_KEY matches the repo's Deploy Key."
+            if [[ "${auth_mode}" == "https" ]]; then
+              echo "If using HTTPS, ensure MATCH_GIT_TOKEN has access to the repo (fine-grained: 'Contents: Read', classic: 'repo')."
+            elif [[ "${auth_mode}" == "ssh" ]]; then
+              echo "If using SSH, ensure MATCH_GIT_PRIVATE_KEY corresponds to a Deploy Key with access to this repo."
+            else
+              echo "No auth configured: set either MATCH_GIT_TOKEN (HTTPS) or MATCH_GIT_PRIVATE_KEY / MATCH_GIT_PRIVATE_KEY_B64 (SSH)."
+            fi
             exit 1
           fi
 
