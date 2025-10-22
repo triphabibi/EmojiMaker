@@ -19,6 +19,7 @@ jobs:
       APP_STORE_CONNECT_KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
       # Optional auth mechanisms for private match repo
       MATCH_GIT_PRIVATE_KEY: ${{ secrets.MATCH_GIT_PRIVATE_KEY }}
+      MATCH_GIT_PRIVATE_KEY_B64: ${{ secrets.MATCH_GIT_PRIVATE_KEY_B64 }}
       MATCH_GIT_TOKEN: ${{ secrets.MATCH_GIT_TOKEN }}
     steps:
       - name: Checkout
@@ -50,26 +51,48 @@ jobs:
           git config --global url."https://${{ env.MATCH_GIT_TOKEN }}@github.com/".insteadOf "https://github.com/"
 
       - name: Prepare SSH key from secret
-        if: env.MATCH_GIT_PRIVATE_KEY != ''
+        if: env.MATCH_GIT_PRIVATE_KEY != '' || env.MATCH_GIT_PRIVATE_KEY_B64 != ''
         id: prep_match_key
         shell: bash
         run: |
-          KEY="${{ env.MATCH_GIT_PRIVATE_KEY }}"
-          # If the secret is single-line with literal \n, convert to real newlines
-          if echo "$KEY" | grep -q '\\n'; then
-            KEY="$(printf "%b" "$KEY")"
-          fi
-          # Normalize Windows CRLF to LF (force C locale to avoid encoding issues)
-          KEY="$(echo "$KEY" | LC_ALL=C tr -d '\r')"
-          # If header missing, try base64-decode fallback
-          if ! echo "$KEY" | grep -Eq 'BEGIN (OPENSSH|RSA) PRIVATE KEY'; then
-            if echo "$KEY" | base64 --decode > /tmp/match_key_decoded 2>/dev/null; then
-              # Use LC_ALL=C to avoid illegal byte sequence errors
-              KEY="$(cat /tmp/match_key_decoded | LC_ALL=C tr -d '\r')"
-            else
-              echo 'Note: Private key header missing and base64 decode failed. Ensure the secret contains the FULL private key.'
+          # Prefer base64 secret if provided to avoid newline/encoding issues
+          if [ -n "${{ env.MATCH_GIT_PRIVATE_KEY_B64 }}" ]; then
+            echo "Using base64-encoded private key secret"
+            KEY="$(echo "${{ env.MATCH_GIT_PRIVATE_KEY_B64 }}" | base64 --decode | LC_ALL=C tr -d '\r')"
+          else
+            KEY="${{ env.MATCH_GIT_PRIVATE_KEY }}"
+            # If the secret is single-line with literal \n, convert to real newlines
+            if echo "$KEY" | grep -q '\\n'; then
+              KEY="$(printf "%b" "$KEY")"
+            fi
+            # Normalize Windows CRLF to LF (force C locale to avoid encoding issues)
+            KEY="$(echo "$KEY" | LC_ALL=C tr -d '\r')"
+            # If header missing, try base64-decode fallback
+            if ! echo "$KEY" | grep -Eq 'BEGIN (OPENSSH|RSA) PRIVATE KEY'; then
+              if echo "$KEY" | base64 --decode > /tmp/match_key_decoded 2>/dev/null; then
+                # Use LC_ALL=C to avoid illegal byte sequence errors
+                KEY="$(cat /tmp/match_key_decoded | LC_ALL=C tr -d '\r')"
+              else
+                echo 'Note: Private key header missing and base64 decode failed. Ensure the secret contains the FULL private key.'
+              fi
             fi
           fi
+
+          # Reject PuTTY .ppk format explicitly
+          if echo "$KEY" | head -n1 | grep -q 'PuTTY-User-Key-File-'; then
+            echo 'Error: Detected PuTTY .ppk format. Export OpenSSH private key via PuTTYgen (Conversions → Export OpenSSH key (new)).'
+            exit 1
+          fi
+
+          # Log detected key header type (no secret content is printed)
+          if echo "$KEY" | grep -q 'BEGIN OPENSSH PRIVATE KEY'; then
+            echo 'Detected OpenSSH private key.'
+          elif echo "$KEY" | grep -q 'BEGIN RSA PRIVATE KEY'; then
+            echo 'Detected PEM RSA private key.'
+          else
+            echo 'Warning: No recognized private key header found.'
+          fi
+
           # Emit processed key as output (multi-line)
           {
             echo 'key<<EOF'
@@ -78,7 +101,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Start ssh-agent and add match deploy key
-        if: env.MATCH_GIT_PRIVATE_KEY != ''
+        if: env.MATCH_GIT_PRIVATE_KEY != '' || env.MATCH_GIT_PRIVATE_KEY_B64 != ''
         uses: webfactory/ssh-agent@v0.8.0
         with:
           ssh-private-key: ${{ steps.prep_match_key.outputs.key }}
