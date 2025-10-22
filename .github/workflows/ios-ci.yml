@@ -9,7 +9,7 @@ jobs:
   build-and-upload:
     runs-on: macos-latest
     env:
-      MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+      MATCH_GIT_URL: ${{ vars.MATCH_GIT_URL }}
       MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
       TEAM_ID: ${{ secrets.TEAM_ID }}
@@ -20,7 +20,6 @@ jobs:
       # Optional auth mechanisms for private match repo
       MATCH_GIT_PRIVATE_KEY: ${{ secrets.MATCH_GIT_PRIVATE_KEY }}
       MATCH_GIT_PRIVATE_KEY_B64: ${{ secrets.MATCH_GIT_PRIVATE_KEY_B64 }}
-      MATCH_GIT_TOKEN: ${{ secrets.MATCH_GIT_TOKEN }}
       MATCH_READONLY: ${{ secrets.MATCH_READONLY }}
       FASTLANE_SKIP_UPDATE_CHECK: true
       FASTLANE_VERBOSE: 1
@@ -121,75 +120,26 @@ jobs:
           readonly_flag="${MATCH_READONLY:-true}"
           echo "Match readonly: ${readonly_flag}"
 
-          # Decide auth mode: prefer SSH if a private key is provided
-          auth_mode="auto"
-          if [[ -n "${MATCH_GIT_PRIVATE_KEY}" || -n "${MATCH_GIT_PRIVATE_KEY_B64}" ]]; then
-            auth_mode="ssh"
-          elif [[ -n "${MATCH_GIT_TOKEN}" ]]; then
-            auth_mode="https"
-          else
-            auth_mode="none"
-          fi
+          # Force SSH-only auth if a private key is provided; ignore token
+          auth_mode="ssh"
           echo "Preflight auth mode: ${auth_mode}"
 
-          # Sanitize MATCH_GIT_URL (strip CR, surrounding whitespace, stray backticks)
+          # Sanitize MATCH_GIT_URL (strip CR, surrounding whitespace, stray quotes/backticks)
           effective_url_raw="${MATCH_GIT_URL}"
-          effective_url="$(printf "%s" "${effective_url_raw}" | LC_ALL=C tr -d '\r' | sed -E 's/^\s+|\s+$//g' | sed -E 's/^`|`$//g')"
-          if [[ "${auth_mode}" == "https" && "${effective_url}" =~ ^git@github.com: ]]; then
-            # Rewrite SSH URL to HTTPS for token usage only if SSH not configured
-            effective_url="https://github.com/${effective_url#git@github.com:}"
-          fi
+          effective_url="$(printf "%s" "${effective_url_raw}" | LC_ALL=C tr -d '\r' | sed -E 's/^\s+|\s+$//g' | sed -E 's/^[`"\']|[`"\']$//g')"
 
           echo "Checking access to certs repo: ${effective_url}"
 
           # Show loaded identities and probe GitHub SSH (for diagnostics)
-          if [[ "${auth_mode}" == "ssh" ]]; then
-            echo "Loaded SSH identities:" && ssh-add -l || true
-            echo "Probing GitHub SSH..." && ssh -T -o StrictHostKeyChecking=no git@github.com || true
-          fi
+          echo "Loaded SSH identities:" && ssh-add -l || true
+          echo "Probing GitHub SSH..." && ssh -T -o StrictHostKeyChecking=no git@github.com || true
 
-          # Try to access via selected auth mode (verbose for SSH)
-          access_ok=0
-          if [[ "${effective_url}" =~ ^git@github.com: ]]; then
-            if GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -v" git ls-remote "${effective_url}" >/dev/null 2>&1; then
-              access_ok=1
-            fi
+          # Try SSH access (verbose)
+          if GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -v" git ls-remote "${effective_url}" >/dev/null 2>&1; then
+            echo "Access OK via SSH."
           else
-            if git ls-remote "${effective_url}" >/dev/null 2>&1; then
-              access_ok=1
-            fi
-          fi
-
-          # Fallback to HTTPS token if SSH fails and token is present (embed token)
-          if [[ ${access_ok} -eq 0 && "${auth_mode}" == "ssh" && -n "${MATCH_GIT_TOKEN}" ]]; then
-            echo "SSH access failed; falling back to HTTPS with token."
-            fallback_url="${MATCH_GIT_URL}"
-            # Sanitize fallback_url
-            fallback_url="$(printf "%s" "${fallback_url}" | LC_ALL=C tr -d '\r' | sed -E 's/^\s+|\s+$//g' | sed -E 's/^`|`$//g')"
-            if [[ "${fallback_url}" =~ ^git@github.com: ]]; then
-              fallback_path="${fallback_url#git@github.com:}"
-              fallback_url="https://${MATCH_GIT_TOKEN}@github.com/${fallback_path}"
-            elif [[ "${fallback_url}" =~ ^https://github.com/ ]]; then
-              fallback_path="${fallback_url#https://github.com/}"
-              fallback_url="https://${MATCH_GIT_TOKEN}@github.com/${fallback_path}"
-            else
-              # As a last resort, assume owner/repo(.git) format
-              fallback_url="https://${MATCH_GIT_TOKEN}@github.com/${fallback_url}"
-            fi
-            if git ls-remote "${fallback_url}" >/dev/null 2>&1; then
-              echo "Access succeeded via HTTPS token." && access_ok=1 && effective_url="${fallback_url}"
-            fi
-          fi
-
-          if [[ ${access_ok} -eq 0 ]]; then
             echo "Error: Cannot access certificates repo via ${effective_url}."
-            if [[ "${auth_mode}" == "https" ]]; then
-              echo "If using HTTPS, ensure MATCH_GIT_TOKEN has access to the repo (fine-grained: 'Contents: Read', classic: 'repo')."
-            elif [[ "${auth_mode}" == "ssh" ]]; then
-              echo "If using SSH, ensure MATCH_GIT_PRIVATE_KEY corresponds to a Deploy Key with access to this repo, and compare ssh-add fingerprint to the repo's Deploy Key fingerprint."
-            else
-              echo "No auth configured: set either MATCH_GIT_TOKEN (HTTPS) or MATCH_GIT_PRIVATE_KEY / MATCH_GIT_PRIVATE_KEY_B64 (SSH)."
-            fi
+            echo "Ensure MATCH_GIT_URL points to the certificates repo SSH URL and MATCH_GIT_PRIVATE_KEY matches its Deploy Key fingerprint (with write access)."
             exit 1
           fi
 
