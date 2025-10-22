@@ -49,12 +49,12 @@ jobs:
         run: bundle install --path vendor/bundle
 
       - name: Configure Git auth for match repo (HTTPS token)
-        if: env.MATCH_GIT_TOKEN != ''
+        if: ${{ env.MATCH_GIT_TOKEN != '' }}
         run: |
           git config --global url."https://${{ env.MATCH_GIT_TOKEN }}@github.com/".insteadOf "https://github.com/"
 
       - name: Prepare SSH key from secret
-        if: env.MATCH_GIT_PRIVATE_KEY != '' || env.MATCH_GIT_PRIVATE_KEY_B64 != ''
+        if: ${{ env.MATCH_GIT_PRIVATE_KEY != '' || env.MATCH_GIT_PRIVATE_KEY_B64 != '' }}
         id: prep_match_key
         shell: bash
         run: |
@@ -104,7 +104,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Start ssh-agent and add match deploy key
-        if: env.MATCH_GIT_PRIVATE_KEY != '' || env.MATCH_GIT_PRIVATE_KEY_B64 != ''
+        if: ${{ env.MATCH_GIT_PRIVATE_KEY != '' || env.MATCH_GIT_PRIVATE_KEY_B64 != '' }}
         uses: webfactory/ssh-agent@v0.8.0
         with:
           ssh-private-key: ${{ steps.prep_match_key.outputs.key }}
