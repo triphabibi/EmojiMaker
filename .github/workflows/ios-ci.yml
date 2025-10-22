@@ -139,13 +139,43 @@ jobs:
           fi
 
           echo "Checking access to certs repo: ${effective_url}"
-          # Rely on previous global git config rewrite (for HTTPS) or ssh-agent (for SSH) for authentication
-          if ! git ls-remote "${effective_url}" &>/dev/null; then
+
+          # Show loaded identities and probe GitHub SSH (for diagnostics)
+          if [[ "${auth_mode}" == "ssh" ]]; then
+            echo "Loaded SSH identities:" && ssh-add -l || true
+            echo "Probing GitHub SSH..." && ssh -T -o StrictHostKeyChecking=no git@github.com || true
+          fi
+
+          # Try to access via selected auth mode (verbose for SSH)
+          access_ok=0
+          if [[ "${effective_url}" =~ ^git@github.com: ]]; then
+            if GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -v" git ls-remote "${effective_url}" >/dev/null 2>&1; then
+              access_ok=1
+            fi
+          else
+            if git ls-remote "${effective_url}" >/dev/null 2>&1; then
+              access_ok=1
+            fi
+          fi
+
+          # Fallback to HTTPS token if SSH fails and token is present
+          if [[ ${access_ok} -eq 0 && "${auth_mode}" == "ssh" && -n "${MATCH_GIT_TOKEN}" ]]; then
+            echo "SSH access failed; falling back to HTTPS with token."
+            fallback_url="${MATCH_GIT_URL}"
+            if [[ "${fallback_url}" =~ ^git@github.com: ]]; then
+              fallback_url="https://github.com/${fallback_url#git@github.com:}"
+            fi
+            if git ls-remote "${fallback_url}" >/dev/null 2>&1; then
+              echo "Access succeeded via HTTPS token." && access_ok=1 && effective_url="${fallback_url}"
+            fi
+          fi
+
+          if [[ ${access_ok} -eq 0 ]]; then
             echo "Error: Cannot access certificates repo via ${effective_url}."
             if [[ "${auth_mode}" == "https" ]]; then
               echo "If using HTTPS, ensure MATCH_GIT_TOKEN has access to the repo (fine-grained: 'Contents: Read', classic: 'repo')."
             elif [[ "${auth_mode}" == "ssh" ]]; then
-              echo "If using SSH, ensure MATCH_GIT_PRIVATE_KEY corresponds to a Deploy Key with access to this repo."
+              echo "If using SSH, ensure MATCH_GIT_PRIVATE_KEY corresponds to a Deploy Key with access to this repo, and compare ssh-add fingerprint to the repo's Deploy Key fingerprint."
             else
               echo "No auth configured: set either MATCH_GIT_TOKEN (HTTPS) or MATCH_GIT_PRIVATE_KEY / MATCH_GIT_PRIVATE_KEY_B64 (SSH)."
             fi
