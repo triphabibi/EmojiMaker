@@ -13,10 +13,17 @@ platform :ios do
   desc "Build and upload to TestFlight"
   lane :beta do
     setup_ci
+    # Prefer HTTPS when a token is provided to avoid SSH key issues
+    effective_git_url = ENV['MATCH_GIT_URL']
+    if ENV['MATCH_GIT_TOKEN'] && effective_git_url && effective_git_url.start_with?('git@github.com:')
+      effective_git_url = effective_git_url.sub('git@github.com:', 'https://github.com/')
+    end
+    UI.message("Using match git_url: #{effective_git_url}")
+
     match(
       type: "appstore",
       readonly: true,
-      git_url: ENV['MATCH_GIT_URL'],
+      git_url: effective_git_url,
       username: ENV['APPLE_ID'],
       git_private_key: ENV['MATCH_GIT_PRIVATE_KEY']
     )
