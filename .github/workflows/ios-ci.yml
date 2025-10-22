@@ -126,7 +126,12 @@ jobs:
 
           # Sanitize MATCH_GIT_URL (strip CR, surrounding whitespace, stray quotes/backticks)
           effective_url_raw="${MATCH_GIT_URL}"
-          effective_url="$(printf "%s" "${effective_url_raw}" | LC_ALL=C tr -d '\r' | sed -E 's/^\s+|\s+$//g' | sed -E 's/^[`"\']|[`"\']$//g')"
+          effective_url="$(printf "%s" "${effective_url_raw}" | LC_ALL=C tr -d '\r')"
+          effective_url="$(printf "%s" "${effective_url}" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+          # Remove any stray quotes/backticks anywhere to avoid parsing issues
+          effective_url="${effective_url//\'/}"
+          effective_url="${effective_url//\"/}"
+          effective_url="${effective_url//\`/}"
 
           echo "Checking access to certs repo: ${effective_url}"
 
