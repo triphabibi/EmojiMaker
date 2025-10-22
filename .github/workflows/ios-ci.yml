@@ -115,7 +115,7 @@ jobs:
           ssh-keyscan github.com >> ~/.ssh/known_hosts
           echo "SSH agent ready; using $MATCH_GIT_URL"
 
-      - name: Preflight: verify certs repo access and readonly mode
+      - name: "Preflight: verify certs repo access and readonly mode"
         shell: bash
         run: |
           readonly_flag="${MATCH_READONLY:-true}"
