@@ -49,23 +49,17 @@ jobs:
         run: |
           git config --global url."https://${{ env.MATCH_GIT_TOKEN }}@github.com/".insteadOf "https://github.com/"
 
-      - name: Setup SSH for match repo
+      - name: Start ssh-agent and add match deploy key
         if: env.MATCH_GIT_PRIVATE_KEY != ''
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ env.MATCH_GIT_PRIVATE_KEY }}
+
+      - name: Add GitHub to known_hosts
         run: |
           mkdir -p ~/.ssh
-          # Write key using heredoc to preserve exact newlines
-          cat > ~/.ssh/match_key << 'EOF'
-${{ env.MATCH_GIT_PRIVATE_KEY }}
-EOF
-          # Normalize Windows CRLF to LF to avoid format errors
-          tr -d '\r' < ~/.ssh/match_key > ~/.ssh/match_key.unix
-          mv ~/.ssh/match_key.unix ~/.ssh/match_key
-          chmod 600 ~/.ssh/match_key
           ssh-keyscan github.com >> ~/.ssh/known_hosts
-          eval "$(ssh-agent -s)"
-          # Add key; if format error, try base64-decoding fallback
-          ssh-add ~/.ssh/match_key || (base64 --decode ~/.ssh/match_key > ~/.ssh/match_key_decoded && chmod 600 ~/.ssh/match_key_decoded && ssh-add ~/.ssh/match_key_decoded)
-          echo "SSH key added; using $MATCH_GIT_URL"
+          echo "SSH agent ready; using $MATCH_GIT_URL"
 
       - name: Build and Upload to TestFlight
         run: bundle exec fastlane beta
