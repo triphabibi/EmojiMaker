@@ -10,6 +10,7 @@ jobs:
     runs-on: macos-latest
     env:
       MATCH_GIT_URL: ${{ vars.MATCH_GIT_URL }}
++      MATCH_GIT_URL_SECRET: ${{ secrets.MATCH_GIT_URL }}
       MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
       TEAM_ID: ${{ secrets.TEAM_ID }}
@@ -126,12 +127,21 @@ jobs:
 
           # Sanitize MATCH_GIT_URL (strip CR, surrounding whitespace, stray quotes/backticks)
           effective_url_raw="${MATCH_GIT_URL}"
-          effective_url="$(printf "%s" "${effective_url_raw}" | LC_ALL=C tr -d '\r')"
-          effective_url="$(printf "%s" "${effective_url}" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
-          # Remove any stray quotes/backticks anywhere to avoid parsing issues
-          effective_url="${effective_url//\'/}"
-          effective_url="${effective_url//\"/}"
-          effective_url="${effective_url//\`/}"
++          effective_url_raw="${MATCH_GIT_URL}"
++          if [ -z "${effective_url_raw}" ]; then
++            effective_url_raw="${MATCH_GIT_URL_SECRET}"
++          fi
+           effective_url="$(printf "%s" "${effective_url_raw}" | LC_ALL=C tr -d '\r')"
+           effective_url="$(printf "%s" "${effective_url}" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+           # Remove any stray quotes/backticks anywhere to avoid parsing issues
+           effective_url="${effective_url//\'/}"
+           effective_url="${effective_url//\"/}"
+           effective_url="${effective_url//\`/}"
++          if [ -z "${effective_url}" ]; then
++            echo "Error: MATCH_GIT_URL is empty."
++            echo "Set Actions variable MATCH_GIT_URL to the SSH URL (e.g., git@github.com:owner/repo.git), or set secret MATCH_GIT_URL."
++            exit 1
++          fi
 
           echo "Checking access to certs repo: ${effective_url}"
 
