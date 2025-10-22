@@ -59,11 +59,15 @@ jobs:
           if echo "$KEY" | grep -q '\\n'; then
             KEY="$(printf "%b" "$KEY")"
           fi
-          # Normalize CRLF to LF
+          # Normalize Windows CRLF to LF
           KEY="$(echo "$KEY" | tr -d '\r')"
-          # Quick validation to help debugging without printing the key
-          if ! echo "$KEY" | grep -q 'BEGIN OPENSSH PRIVATE KEY'; then
-            echo 'Note: Private key header missing. Ensure you used the PRIVATE key content.'
+          # If header missing, try base64-decode fallback
+          if ! echo "$KEY" | grep -Eq 'BEGIN (OPENSSH|RSA) PRIVATE KEY'; then
+            if echo "$KEY" | base64 --decode > /tmp/match_key_decoded 2>/dev/null; then
+              KEY="$(cat /tmp/match_key_decoded | tr -d '\r')"
+            else
+              echo 'Note: Private key header missing and base64 decode failed. Ensure the secret contains the FULL private key.'
+            fi
           fi
           # Emit processed key as output (multi-line)
           {
