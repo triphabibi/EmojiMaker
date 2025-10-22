@@ -50,39 +50,39 @@ jobs:
           git config --global url."https://${{ env.MATCH_GIT_TOKEN }}@github.com/".insteadOf "https://github.com/"
 
       - name: Prepare SSH key from secret
-         if: env.MATCH_GIT_PRIVATE_KEY != ''
-         id: prep_match_key
-         shell: bash
-         run: |
-           KEY="${{ env.MATCH_GIT_PRIVATE_KEY }}"
-           # If the secret is single-line with literal \n, convert to real newlines
-           if echo "$KEY" | grep -q '\\n'; then
-             KEY="$(printf "%b" "$KEY")"
-           fi
-           # Normalize CRLF to LF
-           KEY="$(echo "$KEY" | tr -d '\r')"
-           # Quick validation to help debugging without printing the key
-           if ! echo "$KEY" | grep -q 'BEGIN OPENSSH PRIVATE KEY'; then
-             echo 'Note: Private key header missing. Ensure you used the PRIVATE key content.'
-           fi
-           # Emit processed key as output (multi-line)
-           {
-             echo 'key<<EOF'
-             echo "$KEY"
-             echo 'EOF'
-           } >> "$GITHUB_OUTPUT"
- 
-       - name: Start ssh-agent and add match deploy key
-         if: env.MATCH_GIT_PRIVATE_KEY != ''
-         uses: webfactory/ssh-agent@v0.8.0
-         with:
-           ssh-private-key: ${{ steps.prep_match_key.outputs.key }}
- 
-       - name: Add GitHub to known_hosts
-         run: |
-           mkdir -p ~/.ssh
-           ssh-keyscan github.com >> ~/.ssh/known_hosts
-           echo "SSH agent ready; using $MATCH_GIT_URL"
+        if: env.MATCH_GIT_PRIVATE_KEY != ''
+        id: prep_match_key
+        shell: bash
+        run: |
+          KEY="${{ env.MATCH_GIT_PRIVATE_KEY }}"
+          # If the secret is single-line with literal \n, convert to real newlines
+          if echo "$KEY" | grep -q '\\n'; then
+            KEY="$(printf "%b" "$KEY")"
+          fi
+          # Normalize CRLF to LF
+          KEY="$(echo "$KEY" | tr -d '\r')"
+          # Quick validation to help debugging without printing the key
+          if ! echo "$KEY" | grep -q 'BEGIN OPENSSH PRIVATE KEY'; then
+            echo 'Note: Private key header missing. Ensure you used the PRIVATE key content.'
+          fi
+          # Emit processed key as output (multi-line)
+          {
+            echo 'key<<EOF'
+            echo "$KEY"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Start ssh-agent and add match deploy key
+        if: env.MATCH_GIT_PRIVATE_KEY != ''
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ steps.prep_match_key.outputs.key }}
+
+      - name: Add GitHub to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          echo "SSH agent ready; using $MATCH_GIT_URL"
 
       - name: Build and Upload to TestFlight
         run: bundle exec fastlane beta
