@@ -22,6 +22,8 @@ jobs:
       MATCH_GIT_PRIVATE_KEY_B64: ${{ secrets.MATCH_GIT_PRIVATE_KEY_B64 }}
       MATCH_GIT_TOKEN: ${{ secrets.MATCH_GIT_TOKEN }}
       MATCH_READONLY: ${{ secrets.MATCH_READONLY }}
+      FASTLANE_SKIP_UPDATE_CHECK: true
+      FASTLANE_VERBOSE: 1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -123,14 +125,10 @@ jobs:
             # Rewrite SSH to HTTPS for token usage
             effective_url="https://github.com/${effective_url#git@github.com:}"
           fi
-          # Embed token into HTTPS URL if provided
-          authed_url="${effective_url}"
-          if [[ -n "${MATCH_GIT_TOKEN}" && "${effective_url}" =~ ^https://github.com/ ]]; then
-            authed_url="${effective_url/https:\/\//https:\/\/x-access-token:${MATCH_GIT_TOKEN}@}"
-          fi
 
           echo "Checking access to certs repo: ${effective_url}"
-          if ! git ls-remote "${authed_url}" &>/dev/null; then
+          # Rely on previous global git config rewrite (or ssh-agent) for authentication
+          if ! git ls-remote "${effective_url}" &>/dev/null; then
             echo "Error: Cannot access certificates repo via ${effective_url}."
             echo "If using HTTPS, ensure MATCH_GIT_TOKEN has 'Contents: Read' on the repo."
             echo "If using SSH, ensure MATCH_GIT_PRIVATE_KEY matches the repo's Deploy Key."
@@ -145,4 +143,4 @@ jobs:
           fi
 
       - name: Build and Upload to TestFlight
-        run: bundle exec fastlane beta
+        run: bundle exec fastlane --verbose beta
