@@ -21,6 +21,7 @@ jobs:
       MATCH_GIT_PRIVATE_KEY: ${{ secrets.MATCH_GIT_PRIVATE_KEY }}
       MATCH_GIT_PRIVATE_KEY_B64: ${{ secrets.MATCH_GIT_PRIVATE_KEY_B64 }}
       MATCH_GIT_TOKEN: ${{ secrets.MATCH_GIT_TOKEN }}
+      MATCH_READONLY: ${{ secrets.MATCH_READONLY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -111,6 +112,37 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan github.com >> ~/.ssh/known_hosts
           echo "SSH agent ready; using $MATCH_GIT_URL"
+
+      - name: Preflight: verify certs repo access and readonly mode
+        shell: bash
+        run: |
+          readonly_flag="${MATCH_READONLY:-true}"
+          echo "Match readonly: ${readonly_flag}"
+          effective_url="${MATCH_GIT_URL}"
+          if [[ -n "${MATCH_GIT_TOKEN}" && "${effective_url}" =~ ^git@github.com: ]]; then
+            # Rewrite SSH to HTTPS for token usage
+            effective_url="https://github.com/${effective_url#git@github.com:}"
+          fi
+          # Embed token into HTTPS URL if provided
+          authed_url="${effective_url}"
+          if [[ -n "${MATCH_GIT_TOKEN}" && "${effective_url}" =~ ^https://github.com/ ]]; then
+            authed_url="${effective_url/https:\/\//https:\/\/x-access-token:${MATCH_GIT_TOKEN}@}"
+          fi
+
+          echo "Checking access to certs repo: ${effective_url}"
+          if ! git ls-remote "${authed_url}" &>/dev/null; then
+            echo "Error: Cannot access certificates repo via ${effective_url}."
+            echo "If using HTTPS, ensure MATCH_GIT_TOKEN has 'Contents: Read' on the repo."
+            echo "If using SSH, ensure MATCH_GIT_PRIVATE_KEY matches the repo's Deploy Key."
+            exit 1
+          fi
+
+          if [[ "${readonly_flag}" == "true" ]]; then
+            echo "Readonly mode enabled: CI will NOT create certificates/profiles."
+            echo "Ensure the certificates repo already contains distribution certs and app-store profiles."
+          else
+            echo "Readonly=false: CI will attempt to create certificates/profiles (requires Admin role)."
+          fi
 
       - name: Build and Upload to TestFlight
         run: bundle exec fastlane beta
