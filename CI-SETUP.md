@@ -26,6 +26,62 @@ Add these secrets in your repo Settings → Secrets and variables → Actions:
 2. Create an App Store Connect API key, download the `.p8` file and base64-encode its content for `APP_STORE_CONNECT_KEY`.
 3. Set up `fastlane match`: create a private repo and run `fastlane match init` locally on a Mac to bootstrap certs.
 
+# EmojiMaker CI Setup
+
+This guide explains how to configure signing and CI so the `iOS CI - Build and TestFlight` workflow succeeds.
+
+## Secrets Required
+- `APPLE_ID`: Your Apple ID email.
+- `TEAM_ID`: Apple Developer Team ID.
+- `APP_IDENTIFIER`: Bundle identifier (e.g. com.triphabibi.EmojiMaker).
+- `APP_STORE_CONNECT_API_KEY_ID`: App Store Connect API Key ID.
+- `APP_STORE_CONNECT_ISSUER_ID`: App Store Connect Issuer ID.
+- `APP_STORE_CONNECT_KEY`: Base64 of the `.p8` API key file.
+- `MATCH_PASSWORD`: Passphrase to encrypt/decrypt the certificates repo.
+- `MATCH_GIT_URL`: URL to your match certificates repo.
+- One of:
+  - HTTPS: `MATCH_GIT_TOKEN` (fine-grained PAT with `Contents: Read`).
+  - SSH: `MATCH_GIT_PRIVATE_KEY` or `MATCH_GIT_PRIVATE_KEY_B64` (OpenSSH format, no passphrase).
+- Optional: `MATCH_READONLY` (default `true`). Set to `false` only if your account is Team Admin and you want CI to create assets.
+
+## One-time Admin Bootstrap (recommended)
+Only a Team Admin or Account Holder can create Distribution certificates. Do this once to seed the repo:
+
+1. Ensure the Admin has access to the certs repo and the `MATCH_PASSWORD`.
+2. On their Mac:
+   - `brew install ruby`
+   - `bundle install`
+3. Export API key `.p8` and base64 it: `base64 -i AuthKey_XXXXXXXXXX.p8 | pbcopy`
+4. Run match to create assets:
+   - Set env:
+     - `MATCH_GIT_URL`, `MATCH_PASSWORD`, `APPLE_ID`, `TEAM_ID`, `APP_IDENTIFIER`.
+     - Either `MATCH_GIT_TOKEN` (HTTPS) or `MATCH_GIT_PRIVATE_KEY`/`MATCH_GIT_PRIVATE_KEY_B64` (SSH).
+     - `APP_STORE_CONNECT_API_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, `APP_STORE_CONNECT_KEY`.
+   - Execute: `bundle exec fastlane match appstore --readonly false`
+5. Verify assets committed to the certs repo (`certs`, `profiles/appstore`).
+
+After this, CI will run with `MATCH_READONLY=true` and download assets.
+
+## CI Behavior
+- Preflight step checks:
+  - Prints `Match readonly: ...`.
+  - Verifies access to the certificates repo using token/SSH.
+  - Fails early with guidance if access is denied.
+- `fastlane beta` lane:
+  - Uses App Store Connect API key for authentication.
+  - Defaults to `readonly` unless `MATCH_READONLY=false`.
+  - If `readonly=false`, CI attempts to create assets (requires Admin account). If your account is not Admin, Apple will reject creation.
+
+## Troubleshooting
+- Repo access failure:
+  - HTTPS: Ensure `MATCH_GIT_TOKEN` has `Contents: Read` to the certs repo.
+  - SSH: Ensure the private key matches the repo Deploy Key, and the key is OpenSSH (not PuTTY `.ppk`).
+- No signing assets available and `readonly=true`:
+  - Have an Admin run the one-time bootstrap above.
+- Apple permission error (Only Team Admins can create Distribution certificates):
+  - Set `MATCH_READONLY=true` for CI.
+  - Or have your account promoted to Admin and set `MATCH_READONLY=false`.
+
 ## Workflow usage
 - Push to `main` or trigger `Run workflow` via `Actions` → `iOS CI - Build and TestFlight`.
 - The job will:
