@@ -132,7 +132,9 @@ jobs:
           fi
           echo "Preflight auth mode: ${auth_mode}"
 
-          effective_url="${MATCH_GIT_URL}"
+          # Sanitize MATCH_GIT_URL (strip CR, surrounding whitespace, stray backticks)
+          effective_url_raw="${MATCH_GIT_URL}"
+          effective_url="$(printf "%s" "${effective_url_raw}" | LC_ALL=C tr -d '\r' | sed -E 's/^\s+|\s+$//g' | sed -E 's/^`|`$//g')"
           if [[ "${auth_mode}" == "https" && "${effective_url}" =~ ^git@github.com: ]]; then
             # Rewrite SSH URL to HTTPS for token usage only if SSH not configured
             effective_url="https://github.com/${effective_url#git@github.com:}"
@@ -158,12 +160,21 @@ jobs:
             fi
           fi
 
-          # Fallback to HTTPS token if SSH fails and token is present
+          # Fallback to HTTPS token if SSH fails and token is present (embed token)
           if [[ ${access_ok} -eq 0 && "${auth_mode}" == "ssh" && -n "${MATCH_GIT_TOKEN}" ]]; then
             echo "SSH access failed; falling back to HTTPS with token."
             fallback_url="${MATCH_GIT_URL}"
+            # Sanitize fallback_url
+            fallback_url="$(printf "%s" "${fallback_url}" | LC_ALL=C tr -d '\r' | sed -E 's/^\s+|\s+$//g' | sed -E 's/^`|`$//g')"
             if [[ "${fallback_url}" =~ ^git@github.com: ]]; then
-              fallback_url="https://github.com/${fallback_url#git@github.com:}"
+              fallback_path="${fallback_url#git@github.com:}"
+              fallback_url="https://${MATCH_GIT_TOKEN}@github.com/${fallback_path}"
+            elif [[ "${fallback_url}" =~ ^https://github.com/ ]]; then
+              fallback_path="${fallback_url#https://github.com/}"
+              fallback_url="https://${MATCH_GIT_TOKEN}@github.com/${fallback_path}"
+            else
+              # As a last resort, assume owner/repo(.git) format
+              fallback_url="https://${MATCH_GIT_TOKEN}@github.com/${fallback_url}"
             fi
             if git ls-remote "${fallback_url}" >/dev/null 2>&1; then
               echo "Access succeeded via HTTPS token." && access_ok=1 && effective_url="${fallback_url}"
