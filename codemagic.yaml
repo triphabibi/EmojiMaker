@@ -56,7 +56,7 @@ workflows:
           mkdir -p ~/.ssh
           ssh-keyscan github.com >> ~/.ssh/known_hosts
           echo "SSH identities:" && ssh-add -l || true
-      - name: Preflight: verify certs repo access (SSH-only) and readonly mode
+      - name: "Preflight: verify certs repo access (SSH-only) and readonly mode"
         script: |
           set -e
           readonly_flag="${MATCH_READONLY:-true}"
