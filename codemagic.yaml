@@ -1,0 +1,102 @@
+workflows:
+  ios_testflight:
+    name: iOS TestFlight
+    max_build_duration: 60
+    environment:
+      xcode: latest
+      cocoapods: default
+      ruby: 3.2.0
+      vars:
+        # Supply these in Codemagic UI environment variables or as encrypted variables
+        MATCH_GIT_URL: $MATCH_GIT_URL
+        MATCH_GIT_URL_SECRET: $MATCH_GIT_URL_SECRET
+        MATCH_PASSWORD: $MATCH_PASSWORD
+        APPLE_ID: $APPLE_ID
+        TEAM_ID: $TEAM_ID
+        APP_IDENTIFIER: $APP_IDENTIFIER
+        APP_STORE_CONNECT_API_KEY_ID: $APP_STORE_CONNECT_API_KEY_ID
+        APP_STORE_CONNECT_ISSUER_ID: $APP_STORE_CONNECT_ISSUER_ID
+        APP_STORE_CONNECT_KEY: $APP_STORE_CONNECT_KEY
+        MATCH_GIT_PRIVATE_KEY: $MATCH_GIT_PRIVATE_KEY
+        MATCH_GIT_PRIVATE_KEY_B64: $MATCH_GIT_PRIVATE_KEY_B64
+        MATCH_READONLY: $MATCH_READONLY
+        CM_NOTIFY_EMAIL: $CM_NOTIFY_EMAIL
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+          source: true
+      cancel_previous_builds: true
+    scripts:
+      - name: Show environment
+        script: |
+          xcodebuild -version
+          ruby --version
+      - name: Install dependencies
+        script: |
+          brew update
+          brew install xcodegen
+          bundle install --path vendor/bundle
+      - name: Generate Xcode project
+        script: xcodegen generate
+      - name: Prepare SSH key and known_hosts
+        script: |
+          set -e
+          if [[ -n "$MATCH_GIT_PRIVATE_KEY_B64" ]]; then
+            echo "Using base64-encoded private key"
+            echo "$MATCH_GIT_PRIVATE_KEY_B64" | base64 --decode | LC_ALL=C tr -d '\r' > /tmp/match_key
+          else
+            printf "%b" "$MATCH_GIT_PRIVATE_KEY" | LC_ALL=C tr -d '\r' > /tmp/match_key
+          fi
+          chmod 600 /tmp/match_key
+          eval "$(ssh-agent -s)"
+          ssh-add /tmp/match_key
+          mkdir -p ~/.ssh
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          echo "SSH identities:" && ssh-add -l || true
+      - name: Preflight: verify certs repo access (SSH-only) and readonly mode
+        script: |
+          set -e
+          readonly_flag="${MATCH_READONLY:-true}"
+          echo "Match readonly: ${readonly_flag}"
+          auth_mode="ssh"
+          echo "Preflight auth mode: ${auth_mode}"
+          effective_url_raw="${MATCH_GIT_URL}"
+          if [ -z "${effective_url_raw}" ]; then
+            effective_url_raw="${MATCH_GIT_URL_SECRET}"
+          fi
+          effective_url="$(printf "%s" "${effective_url_raw}" | LC_ALL=C tr -d '\r')"
+          effective_url="$(printf "%s" "${effective_url}" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+          effective_url="${effective_url//\'/}"
+          effective_url="${effective_url//\"/}"
+          effective_url="${effective_url//\`/}"
+          if [ -z "${effective_url}" ]; then
+            echo "Error: MATCH_GIT_URL is empty. Set it to git@github.com:owner/repo.git in Codemagic env vars (or MATCH_GIT_URL_SECRET)."
+            exit 1
+          fi
+          echo "Checking access to certs repo: ${effective_url}"
+          echo "Probing GitHub SSH..." && ssh -T -o StrictHostKeyChecking=no git@github.com || true
+          if GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -v" git ls-remote "${effective_url}" >/dev/null 2>&1; then
+            echo "Access OK via SSH."
+          else
+            echo "Error: Cannot access certificates repo via ${effective_url}. Ensure Deploy Key has write access and matches the loaded fingerprint."
+            exit 1
+          fi
+          if [[ "${readonly_flag}" == "true" ]]; then
+            echo "Readonly enabled: will not create new certs/profiles."
+          else
+            echo "Readonly=false: match may create certs/profiles (Admin role required)."
+          fi
+      - name: Build and upload with fastlane
+        script: |
+          bundle exec fastlane --verbose beta
+    artifacts:
+      - build/**
+      - ~/Library/Logs/gym/**/*.log
+    publishing:
+      email:
+        recipients:
+          - $CM_NOTIFY_EMAIL
+        notify: true
