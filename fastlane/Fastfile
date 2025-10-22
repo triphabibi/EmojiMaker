@@ -28,9 +28,13 @@ platform :ios do
       is_key_content_base64: true
     )
 
+    # Default to readonly unless explicitly allowed (only Team Admin/Account Holder can create distribution certs)
+    readonly_flag = ENV['MATCH_READONLY'] == 'false' ? false : true
+    UI.message("Match readonly: #{readonly_flag}")
+
     match(
       type: "appstore",
-      readonly: false,
+      readonly: readonly_flag,
       git_url: effective_git_url,
       username: ENV['APPLE_ID'],
       team_id: ENV['TEAM_ID'],
