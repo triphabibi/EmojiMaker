@@ -21,12 +21,24 @@ platform :ios do
     UI.message("Using match git_url: #{effective_git_url}")
 
     # Use App Store Connect API key for match to avoid 2FA prompts
-    api_key = app_store_connect_api_key(
-      key_id: ENV['APP_STORE_CONNECT_API_KEY_ID'],
-      issuer_id: ENV['APP_STORE_CONNECT_ISSUER_ID'],
-      key_content: ENV['APP_STORE_CONNECT_KEY'],
-      is_key_content_base64: true
-    )
+    raw_key = (ENV['APP_STORE_CONNECT_KEY'] || '').gsub("\r", "")
+    if raw_key.include?('BEGIN PRIVATE KEY')
+      UI.message('Detected PEM .p8 content in APP_STORE_CONNECT_KEY (not base64).')
+      api_key = app_store_connect_api_key(
+        key_id: ENV['APP_STORE_CONNECT_API_KEY_ID'],
+        issuer_id: ENV['APP_STORE_CONNECT_ISSUER_ID'],
+        key_content: raw_key,
+        is_key_content_base64: false
+      )
+    else
+      UI.message('Using base64-encoded .p8 content from APP_STORE_CONNECT_KEY.')
+      api_key = app_store_connect_api_key(
+        key_id: ENV['APP_STORE_CONNECT_API_KEY_ID'],
+        issuer_id: ENV['APP_STORE_CONNECT_ISSUER_ID'],
+        key_content: raw_key,
+        is_key_content_base64: true
+      )
+    end
 
     # Default to readonly unless explicitly allowed (only Team Admin/Account Holder can create distribution certs)
     readonly_flag = ENV['MATCH_READONLY'] == 'false' ? false : true
